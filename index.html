@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>English Word Monsters V13: Smart Deck</title>
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Roboto:wght@400;700&display=swap');
+        
+        * { box-sizing: border-box; }
+
+        body { 
+            margin: 0; 
+            padding: 0;
+            overflow: hidden; 
+            font-family: 'Roboto', sans-serif; 
+            background-color: #1a1a2e; 
+            color: white; 
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .game-font { font-family: 'Fredoka One', cursive; }
+        
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .shake-anim { animation: shake 0.5s; }
+
+        .scroll-container {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            padding-bottom: 120px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root" style="width: 100%; height: 100%;"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 1. GAME DATA ---
+        const ELEMENTS = {
+            FIRE: { name: 'Fire', color: '#ff5e5e', hex: 0xff5e5e, bgHex: 0x1a0505, icon: '🔥', desc: 'Lava Dungeon' },
+            WATER: { name: 'Water', color: '#4facfe', hex: 0x4facfe, bgHex: 0x001133, icon: '💧', desc: 'Deep Ocean' },
+            GRASS: { name: 'Grass', color: '#43e97b', hex: 0x43e97b, bgHex: 0x051a05, icon: '🌿', desc: 'Magic Forest' },
+            ELECTRIC: { name: 'Electric', color: '#ffd700', hex: 0xffd700, bgHex: 0x111111, icon: '⚡', desc: 'Cyber Space' },
+            EARTH: { name: 'Earth', color: '#cd853f', hex: 0xcd853f, bgHex: 0x2a1a0a, icon: '🪨', desc: 'Stone Castle' }
+        };
+
+        const WORD_LIST = [
+            { word: "I" }, { word: "am" }, { word: "the" }, { word: "a" }, { word: "to" },
+            { word: "like" }, { word: "he" }, { word: "is" }, { word: "have" }, { word: "my" },
+            { word: "we" }, { word: "make" }, { word: "me" }, { word: "for" }, { word: "with" },
+            { word: "she" }, { word: "see" }, { word: "look" }, { word: "of" }, { word: "are" },
+            { word: "that" }, { word: "do" }, { word: "you" }, { word: "they" },
+            { word: "one" }, { word: "two" }, { word: "three" }, { word: "four" }, { word: "five" },
+            { word: "here" }, { word: "go" }, { word: "from" },
+            { word: "yellow" }, { word: "blue" }, { word: "what" }, { word: "green" }, 
+            { word: "was" }, { word: "said" }, { word: "where" }, { word: "any" }, { word: "come" },
+            { word: "play" }, { word: "her" }, { word: "how" }, { word: "down" },
+            { word: "away" }, { word: "give" }, { word: "little" }, { word: "were" }, { word: "some" },
+            { word: "funny" }, { word: "live" }, { word: "know" }, { word: "going" }, { word: "find" },
+            { word: "over" }, { word: "again" }, { word: "all" }, { word: "now" }, { word: "pretty" },
+            { word: "black" }, { word: "brown" }, { word: "white" },
+            { word: "good" }, { word: "open" }, { word: "could" }, { word: "want" }, { word: "every" },
+            { word: "please" }, { word: "may" }, { word: "this" }, { word: "round" }, { word: "be" },
+            { word: "saw" }, { word: "our" }, { word: "eat" }, { word: "soon" }, { word: "walk" },
+            { word: "who" }, { word: "into" }, { word: "there" }, { word: "so" }, { word: "out" },
+            { word: "then" }, { word: "new" }, { word: "too" }, { word: "when" }, { word: "no" },
+            { word: "say" }, { word: "under" }
+        ];
+
+        // --- Helper: Fisher-Yates Shuffle ---
+        const shuffleArray = (array) => {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
+
+        // --- 2. AUDIO GUARDIAN ---
+
+        const AudioController = {
+            ctx: null,
+            isUnlocked: false,
+            activeUtterance: null,
+
+            init: function() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) this.ctx = new AudioContext();
+                }
+            },
+
+            unlock: function() {
+                this.init();
+                if (!this.ctx) return;
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+                const buffer = this.ctx.createBuffer(1, 1, 22050);
+                const source = this.ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(this.ctx.destination);
+                source.start(0);
+                if ('speechSynthesis' in window) {
+                    const silent = new SpeechSynthesisUtterance("");
+                    silent.volume = 0;
+                    window.speechSynthesis.speak(silent);
+                }
+                this.isUnlocked = true;
+            },
+
+            play: function(type) {
+                if (!this.ctx) this.init();
+                if (!this.ctx) return;
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                if (type === 'tick') {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(1200, t+0.05);
+                    gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+                    osc.start(t); osc.stop(t+0.1);
+                } else if (type === 'select') {
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(400, t); osc.frequency.linearRampToValueAtTime(600, t+0.2);
+                    gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t+0.2);
+                    osc.start(t); osc.stop(t+0.2);
+                } else if (type === 'correct') {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(523.25, t); osc.frequency.setValueAtTime(659.25, t+0.1); osc.frequency.setValueAtTime(783.99, t+0.2); 
+                    gain.gain.setValueAtTime(0.1, t); gain.gain.linearRampToValueAtTime(0, t+0.4);
+                    osc.start(t); osc.stop(t+0.4);
+                } else if (type === 'wrong') {
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); osc.frequency.linearRampToValueAtTime(50, t+0.4);
+                    gain.gain.setValueAtTime(0.2, t); gain.gain.exponentialRampToValueAtTime(0.01, t+0.4);
+                    osc.start(t); osc.stop(t+0.4);
+                } else if (type === 'dash') {
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(200, t); osc.frequency.linearRampToValueAtTime(500, t+0.2);
+                    gain.gain.setValueAtTime(0.3, t); gain.gain.linearRampToValueAtTime(0, t+0.2);
+                    osc.start(t); osc.stop(t+0.2);
+                } else if (type === 'impact') {
+                    osc.type = 'square'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(20, t+0.3);
+                    gain.gain.setValueAtTime(0.5, t); gain.gain.exponentialRampToValueAtTime(0.01, t+0.3);
+                    osc.start(t); osc.stop(t+0.3);
+                }
+            },
+
+            speak: function(text) {
+                if (!('speechSynthesis' in window)) return;
+                window.speechSynthesis.cancel(); 
+                const utterance = new SpeechSynthesisUtterance(text);
+                const voices = window.speechSynthesis.getVoices();
+                const preferredVoice = voices.find(v => v.name === 'Google US English') || voices.find(v => v.name === 'Samantha') || voices.find(v => v.lang === 'en-US') || voices[0];
+                if (preferredVoice) utterance.voice = preferredVoice;
+                utterance.lang = 'en-US';
+                utterance.rate = 0.85; 
+                utterance.pitch = 1.0;
+                this.activeUtterance = utterance;
+                utterance.onend = () => { this.activeUtterance = null; };
+                window.speechSynthesis.speak(utterance);
+            }
+        };
+
+        if ('speechSynthesis' in window) { window.speechSynthesis.onvoiceschanged = () => {}; }
+
+        // --- 3. THREE.JS SCENE ---
+
+        const ThreeScene = ({ element, gameState }) => {
+            const mountRef = useRef(null);
+            const [isThreeReady, setIsThreeReady] = useState(false);
+            const sceneRef = useRef(null);
+            const cameraRef = useRef(null);
+            const playerRef = useRef(null);
+            const enemyRef = useRef(null);
+            const animationRef = useRef(null);
+
+            useEffect(() => {
+                if (window.THREE) setIsThreeReady(true);
+                else {
+                    const t = setInterval(() => { if(window.THREE) { setIsThreeReady(true); clearInterval(t); }}, 100);
+                    return () => clearInterval(t);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (!isThreeReady || !mountRef.current) return;
+                const THREE = window.THREE;
+                const scene = new THREE.Scene();
+                const bgHex = element ? ELEMENTS[element].bgHex : 0x000000;
+                scene.background = new THREE.Color(bgHex);
+                scene.fog = new THREE.Fog(bgHex, 10, 50);
+                sceneRef.current = scene;
+
+                const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+                const adjustCamera = () => {
+                    const aspect = window.innerWidth / window.innerHeight;
+                    if (aspect < 1) camera.position.set(0, 6, 24); 
+                    else camera.position.set(0, 4, 14); 
+                    camera.lookAt(0, 1, 0);
+                };
+                adjustCamera();
+                cameraRef.current = camera;
+
+                const renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                mountRef.current.appendChild(renderer.domElement);
+
+                const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+                scene.add(ambient);
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                dirLight.position.set(5, 10, 7);
+                scene.add(dirLight);
+
+                const createEnvironment = (type) => {
+                    const group = new THREE.Group();
+                    const groundGeo = new THREE.PlaneGeometry(100, 100);
+                    let col = type==='FIRE'?0x1a0505:type==='WATER'?0x001122:type==='GRASS'?0x052205:type==='ELECTRIC'?0x000000:0x333333;
+                    const ground = new THREE.Mesh(groundGeo, new THREE.MeshPhongMaterial({ color: col, shininess: 5 }));
+                    ground.rotation.x = -Math.PI/2; ground.position.y = -2; group.add(ground);
+                    if (type === 'GRASS') { 
+                        for(let i=0; i<30; i++) {
+                            const t = new THREE.Group(); t.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.5,2), new THREE.MeshLambertMaterial({color:0x5c4033})));
+                            const l = new THREE.Mesh(new THREE.ConeGeometry(2,4,8), new THREE.MeshLambertMaterial({color:0x2d5a27})); l.position.y=2; t.add(l);
+                            t.position.set((Math.random()-0.5)*50,-1,(Math.random()-0.5)*40-15); group.add(t);
+                        }
+                    } else if (type === 'FIRE') {
+                        for(let i=0; i<20; i++) { const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.8), new THREE.MeshBasicMaterial({color:0xff4400})); r.position.set((Math.random()-0.5)*60, Math.random()*5, (Math.random()-0.5)*40-5); group.add(r); }
+                    } else if (type === 'WATER') {
+                        for(let i=0; i<30; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:0x88ccff, transparent:true, opacity:0.4})); b.position.set((Math.random()-0.5)*50, Math.random()*10, (Math.random()-0.5)*30); group.add(b); }
+                    } else if (type === 'ELECTRIC') {
+                        const grid = new THREE.GridHelper(100, 50, 0x00ffff, 0x003333); grid.position.y = -1.9; group.add(grid);
+                    } else if (type === 'EARTH') {
+                        for(let i=0; i<10; i++) { const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,2), new THREE.MeshLambertMaterial({color:0x555555})); w.position.set((Math.random()-0.5)*60, 1, (Math.random()-0.5)*40-20); group.add(w); }
+                    }
+                    scene.add(group);
+                };
+
+                const createPlayer = (type) => {
+                    const group = new THREE.Group(); const mat = new THREE.MeshPhongMaterial({ color: ELEMENTS[type].hex, shininess: 80 });
+                    group.add(new THREE.Mesh(new THREE.SphereGeometry(1.2,32,32), mat));
+                    const e1=new THREE.Mesh(new THREE.SphereGeometry(0.35,32,32), new THREE.MeshBasicMaterial({color:0xffffff})); e1.position.set(-0.35,0.2,0.85); e1.add(new THREE.Mesh(new THREE.SphereGeometry(0.18), new THREE.MeshBasicMaterial({color:0x000000}))).children[0].position.z=0.25;
+                    const e2=e1.clone(); e2.position.set(0.35,0.2,0.85); group.add(e1); group.add(e2); return group;
+                };
+                const createEnemy = () => {
+                    const group = new THREE.Group(); const mat = new THREE.MeshPhongMaterial({ color: 0x440044, shininess: 20, flatShading: true });
+                    group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.3,0), mat));
+                    const w1 = new THREE.Mesh(new THREE.BoxGeometry(1,0.1,0.5), mat); w1.position.set(1,0.5,0); w1.rotation.z=-0.5; const w2 = w1.clone(); w2.position.set(-1,0.5,0); w2.rotation.z=0.5; group.add(w1); group.add(w2);
+                    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({color:0xffaa00})); e1.position.set(-0.4,0.3,1); const e2 = e1.clone(); e2.position.set(0.4,0.3,1); group.add(e1); group.add(e2); return group;
+                };
+                const createExplosion = (pos, color) => {
+                    const geo = new THREE.BufferGeometry(); const posArr = []; const velArr = []; const colArr = [];
+                    const baseC = new THREE.Color(color); const goldC = new THREE.Color(0xffdd44);
+                    for(let i=0; i<30; i++) {
+                        posArr.push(pos.x, pos.y, pos.z); velArr.push((Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5));
+                        const c = Math.random()>0.5 ? baseC : goldC; colArr.push(c.r, c.g, c.b);
+                    }
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(colArr, 3));
+                    const p = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.6, vertexColors: true, transparent: true })); p.userData = { vels: velArr, life: 40 }; return p;
+                };
+
+                if (element) {
+                    createEnvironment(element);
+                    const player = createPlayer(element); player.position.set(-5, 0, 0); player.rotation.y = Math.PI/4; scene.add(player); playerRef.current = player;
+                    const keys = Object.keys(ELEMENTS); const enemy = createEnemy(keys[Math.floor(Math.random()*keys.length)]); enemy.position.set(5, 0, 0); enemy.rotation.y = -Math.PI/4; scene.add(enemy); enemyRef.current = enemy;
+                }
+
+                const explosions = [];
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    if(playerRef.current) playerRef.current.position.y = Math.sin(Date.now()*0.002)*0.2;
+                    if(enemyRef.current) enemyRef.current.position.y = Math.sin(Date.now()*0.003)*0.3+1;
+
+                    const updateCombat = (attacker, target, isPlayer) => {
+                        if(!attacker.userData.animState) return;
+                        const state = attacker.userData.animState;
+                        const start = isPlayer ? -5 : 5; const end = isPlayer ? 3 : -3;
+                        if(state === 'RUSH_IN') {
+                            attacker.userData.progress = (attacker.userData.progress||0) + 0.08;
+                            const t = Math.min(attacker.userData.progress, 1);
+                            attacker.position.x = THREE.MathUtils.lerp(start, end, t*t);
+                            if(t >= 1) {
+                                attacker.userData.animState = 'IMPACT'; attacker.userData.progress = 0; target.userData.shake = 20;
+                                const color = isPlayer ? ELEMENTS[element].hex : 0xaaaaaa;
+                                const exp = createExplosion(target.position, color); scene.add(exp); explosions.push(exp);
+                            }
+                        } else if (state === 'IMPACT') {
+                            attacker.userData.progress += 0.05; if(attacker.userData.progress > 1) { attacker.userData.animState = 'RETREAT'; attacker.userData.progress = 0; }
+                        } else if (state === 'RETREAT') {
+                            attacker.userData.progress += 0.05; const t = Math.min(attacker.userData.progress, 1); attacker.position.x = THREE.MathUtils.lerp(end, start, t);
+                            if(t >= 1) { attacker.userData.animState = null; attacker.userData.progress = 0; }
+                        }
+                    };
+                    if(playerRef.current && playerRef.current.userData.animState) updateCombat(playerRef.current, enemyRef.current, true);
+                    if(enemyRef.current && enemyRef.current.userData.animState) updateCombat(enemyRef.current, playerRef.current, false);
+
+                    [playerRef.current, enemyRef.current].forEach(m => { if(m && m.userData.shake > 0) { m.userData.shake--; m.rotation.z = (Math.random()-0.5)*0.5; m.position.z = (Math.random()-0.5)*0.2; } else if(m) { m.rotation.z = 0; m.position.z = 0; } });
+                    for(let i=explosions.length-1; i>=0; i--) { const p = explosions[i]; const pos = p.geometry.attributes.position.array; const vels = p.userData.vels; for(let j=0; j<vels.length; j++) pos[j] += vels[j]; p.geometry.attributes.position.needsUpdate = true; p.userData.life--; p.material.opacity = p.userData.life/40; if(p.userData.life<=0) { scene.remove(p); explosions.splice(i,1); } }
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                const handleResize = () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); adjustCamera(); };
+                window.addEventListener('resize', handleResize);
+                return () => { window.removeEventListener('resize', handleResize); if(mountRef.current && renderer.domElement) mountRef.current.removeChild(renderer.domElement); };
+            }, [element, isThreeReady]);
+
+            useEffect(() => {
+                if(!isThreeReady) return;
+                if (gameState.action === 'ATTACK_PLAYER') { if (playerRef.current) { playerRef.current.userData.animState = 'RUSH_IN'; playerRef.current.userData.progress = 0; } }
+                if (gameState.action === 'ATTACK_ENEMY') { if (enemyRef.current) { enemyRef.current.userData.animState = 'RUSH_IN'; enemyRef.current.userData.progress = 0; } }
+            }, [gameState, isThreeReady]);
+
+            return <div ref={mountRef} className="absolute inset-0 z-0" />;
+        };
+
+        // --- 4. MAIN APP ---
+
+        function App() {
+            const [screen, setScreen] = useState('intro');
+            const [myElement, setMyElement] = useState(null);
+            const [playerHP, setPlayerHP] = useState(100);
+            const [enemyHP, setEnemyHP] = useState(100);
+            const [currentWord, setCurrentWord] = useState(null);
+            const [options, setOptions] = useState([]);
+            const [timer, setTimer] = useState(8);
+            const [roundResult, setRoundResult] = useState(null);
+            const [animState, setAnimState] = useState({ action: 'IDLE', timestamp: 0 });
+            const timerRef = useRef(null);
+            
+            // Deck System Refs
+            const deckRef = useRef([]);
+            const deckIndexRef = useRef(0);
+
+            // Init Deck on Mount
+            useEffect(() => {
+                deckRef.current = shuffleArray(WORD_LIST);
+                deckIndexRef.current = 0;
+            }, []);
+
+            const getNextTarget = () => {
+                if (deckIndexRef.current >= deckRef.current.length) {
+                    deckRef.current = shuffleArray(WORD_LIST);
+                    deckIndexRef.current = 0;
+                }
+                const word = deckRef.current[deckIndexRef.current];
+                deckIndexRef.current++;
+                return word;
+            };
+
+            const getRandomDistractor = (target) => {
+                let d;
+                do {
+                    d = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
+                } while (d.word === target.word);
+                return d;
+            };
+
+            const generateRound = () => {
+                setRoundResult(null);
+                setAnimState({ action: 'IDLE', timestamp: 0 });
+                
+                const target = getNextTarget();
+                const distractors = [];
+                while(distractors.length < 3) {
+                    const d = getRandomDistractor(target);
+                    if (!distractors.some(item => item.word === d.word)) distractors.push(d);
+                }
+                const allOpts = [...distractors, target].sort(() => Math.random() - 0.5);
+                
+                setCurrentWord(target);
+                setOptions(allOpts);
+                setTimer(8);
+                
+                // Speak immediately
+                AudioController.speak(target.word);
+                
+                if (timerRef.current) clearInterval(timerRef.current);
+                let timeLeft = 8;
+                timerRef.current = setInterval(() => {
+                    timeLeft -= 1;
+                    setTimer(timeLeft);
+                    if (timeLeft <= 4 && timeLeft > 0) AudioController.play('tick');
+                    if (timeLeft <= 0) {
+                        clearInterval(timerRef.current);
+                        handleAnswer(null, target); 
+                    }
+                }, 1000);
+            };
+
+            const handleAnswer = (selectedWord, target) => {
+                clearInterval(timerRef.current);
+                const isCorrect = selectedWord && selectedWord.word === target.word;
+
+                if (isCorrect) {
+                    AudioController.play('correct'); 
+                    AudioController.play('dash'); // Sound NOW
+                    setTimeout(() => AudioController.play('impact'), 500); 
+                    setRoundResult('correct'); setAnimState({ action: 'ATTACK_PLAYER', timestamp: Date.now() });
+                    setTimeout(() => setEnemyHP(prev => Math.max(0, prev - 20)), 500); 
+                } else {
+                    AudioController.play('wrong'); 
+                    AudioController.play('dash'); // Sound NOW
+                    setTimeout(() => AudioController.play('impact'), 500);
+                    setRoundResult('wrong'); setAnimState({ action: 'ATTACK_ENEMY', timestamp: Date.now() });
+                    setTimeout(() => setPlayerHP(prev => Math.max(0, prev - 20)), 500);
+                }
+            };
+
+            useEffect(() => {
+                if (playerHP <= 0) { setTimeout(() => { AudioController.speak("You failed, try next time"); setScreen('end_lose'); }, 2000); }
+                else if (enemyHP <= 0) { setTimeout(() => { AudioController.speak("Congratulation you are the winner"); setScreen('end_win'); }, 2000); }
+                else if (roundResult) { const next = setTimeout(() => generateRound(), 2500); return () => clearTimeout(next); }
+            }, [playerHP, enemyHP, roundResult]);
+
+            const selectElement = (key) => {
+                AudioController.unlock();
+                AudioController.play('select');
+                setMyElement(key); setScreen('battle'); setPlayerHP(100); setEnemyHP(100);
+                setTimeout(() => generateRound(), 1000);
+            };
+
+            const renderIntro = () => (
+                <div className="flex flex-col items-center justify-center h-screen bg-slate-900 relative z-10 font-sans overflow-hidden" 
+                     onClick={() => { AudioController.unlock(); AudioController.play('tick'); setScreen('select'); }}
+                     onTouchStart={() => { AudioController.unlock(); }}>
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30 animate-pulse"></div>
+                    <h1 className="text-5xl md:text-8xl text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-red-500 mb-8 text-center drop-shadow-2xl relative z-10 game-font">
+                        English Word<br/>Monsters<br/>
+                        <span className="text-2xl text-white tracking-widest uppercase mt-4 block opacity-80">V13 No Repeats</span>
+                    </h1>
+                    <button className="relative z-10 px-16 py-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-2xl text-2xl md:text-3xl font-bold text-white shadow-2xl transition-all transform hover:scale-105 active:scale-95">START ADVENTURE</button>
+                </div>
+            );
+
+            const renderSelect = () => (
+                <div className="scroll-container bg-slate-900 relative z-10 p-4 font-sans flex flex-col items-center">
+                    <h2 className="text-3xl md:text-4xl text-white my-8 game-font flex-shrink-0">Choose Your Guardian</h2>
+                    <div className="flex flex-wrap justify-center gap-6 w-full max-w-5xl pb-20 flex-shrink-0">
+                        {Object.entries(ELEMENTS).map(([key, data]) => (
+                            <button key={key} onClick={() => selectElement(key)} className="group flex flex-col items-center p-6 rounded-3xl border-4 bg-slate-800 transition-all hover:scale-105 active:scale-95 hover:bg-slate-700 w-36 h-48 flex-shrink-0" style={{ borderColor: data.color, boxShadow: `0 0 15px ${data.color}40` }}>
+                                <div className="text-5xl mb-4 transform group-hover:rotate-12 transition-transform">{data.icon}</div>
+                                <span className="text-xl font-bold text-white mb-1">{data.name}</span>
+                                <span className="text-xs opacity-70 uppercase tracking-widest" style={{color: data.color}}>{data.desc}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            const renderBattle = () => (
+                <>
+                    <ThreeScene element={myElement} gameState={animState} />
+                    <div className="absolute inset-0 z-10 flex flex-col justify-between p-2 md:p-6 pointer-events-none font-sans">
+                        <div className="flex justify-between items-start w-full max-w-6xl mx-auto pt-2">
+                            <div className={`bg-slate-900/60 backdrop-blur-md border-2 p-2 rounded-xl w-5/12 transition-transform duration-100 ${roundResult==='wrong'?'translate-x-[-10px] border-red-500':'border-white/20'}`}>
+                                <div className="flex justify-between mb-1"><span className="font-bold text-lg text-white drop-shadow-md">{ELEMENTS[myElement]?.icon} YOU</span><span className="font-bold text-white text-lg">{playerHP}</span></div>
+                                <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-white/10"><div className="h-full transition-all duration-300 shadow-[0_0_15px_rgba(74,222,128,0.5)]" style={{width: `${playerHP}%`, backgroundColor: playerHP>30?'#4ade80':'#ef4444'}}></div></div>
+                            </div>
+                            <div className="flex flex-col items-center -mt-2">
+                                <div className={`text-6xl md:text-8xl font-black drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)] transition-all game-font ${timer<=3 ? 'text-red-500 scale-125 shake-anim' : 'text-white'}`}>{timer}</div>
+                                <button className="pointer-events-auto bg-white/20 hover:bg-white/30 p-2 rounded-full backdrop-blur transition-colors" onClick={() => { AudioController.play('select'); currentWord && AudioController.speak(currentWord.word); }}>🔊</button>
+                            </div>
+                            <div className={`bg-slate-900/60 backdrop-blur-md border-2 p-2 rounded-xl w-5/12 transition-transform duration-100 ${roundResult==='correct'?'translate-x-[10px] border-red-500':'border-white/20'}`}>
+                                <div className="flex justify-between mb-1"><span className="font-bold text-white text-lg">{enemyHP}</span><span className="font-bold text-lg text-purple-400 drop-shadow-md">BOSS 👿</span></div>
+                                <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-white/10"><div className="h-full transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.5)]" style={{width: `${enemyHP}%`, backgroundColor: enemyHP>30?'#c084fc':'#ef4444'}}></div></div>
+                            </div>
+                        </div>
+                        {(roundResult) && (<div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-6xl md:text-8xl font-black animate-bounce drop-shadow-[0_10px_0_rgba(0,0,0,1)] z-50 stroke-black game-font" style={{ color: roundResult==='correct' ? '#fbbf24' : '#ef4444', textShadow: '0 0 20px rgba(0,0,0,0.5)' }}>{roundResult === 'correct' ? "CRITICAL!" : roundResult === 'timeout' ? "TIME'S UP!" : "MISS!"}</div>)}
+                        <div className="w-full max-w-5xl mx-auto pointer-events-auto mb-4 px-2">
+                            <div className="grid grid-cols-2 gap-3 md:gap-6">
+                                {options.map((opt, idx) => {
+                                    let statusClass = "bg-slate-800/60 border-white/10 active:scale-95";
+                                    if (roundResult) { if (opt.word === currentWord.word) statusClass = "bg-green-500 border-green-400 scale-105 shadow-[0_0_40px_#22c55e] z-10"; else statusClass = "opacity-20 bg-gray-900 scale-95"; }
+                                    return (<button key={idx} onClick={() => handleAnswer(opt, currentWord)} disabled={!!roundResult} className={`backdrop-blur-xl border-2 md:border-4 p-4 md:p-8 rounded-2xl text-2xl md:text-5xl font-bold text-white transition-all transform active:border-white/50 game-font ${statusClass}`} style={{ textShadow: '0 2px 5px rgba(0,0,0,0.3)' }}>{opt.word}</button>);
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </>
+            );
+
+            return (
+                <div className="w-full h-screen overflow-hidden bg-slate-900">
+                    {screen === 'intro' && renderIntro()}
+                    {screen === 'select' && renderSelect()}
+                    {screen === 'battle' && renderBattle()}
+                    {(screen === 'end_win' || screen === 'end_lose') && (
+                        <div className="flex flex-col items-center justify-center h-screen bg-slate-900 relative z-10 font-sans">
+                            <h2 className={`text-5xl md:text-8xl mb-6 drop-shadow-2xl relative z-10 game-font text-center ${screen === 'end_win' ? 'text-green-400' : 'text-red-500'}`}>{screen === 'end_win' ? 'VICTORY!' : 'DEFEAT'}</h2>
+                            <button onClick={() => setScreen('select')} className="relative z-10 px-12 py-4 bg-white text-slate-900 rounded-full text-2xl font-bold hover:scale-105 transition-all">Play Again</button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
